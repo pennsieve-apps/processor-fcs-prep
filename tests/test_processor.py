@@ -83,6 +83,51 @@ def test_default_flags(marker, flags):
     assert C.default_flags(marker) == flags
 
 
+# CyTOF marker names (Kowli et al. panel and common spellings)
+@pytest.mark.parametrize("marker,channel,flags", [
+    # viability: neither clustering nor state
+    ("115In_Dead", "In115Di", (False, False)), ("Dead", None, (False, False)), ("LD", None, (False, False)),
+    ("L/D", None, (False, False)), ("Live", None, (False, False)), ("LIVE/DEAD Aqua", None, (False, False)),
+    ("Viability", None, (False, False)), ("Viab", None, (False, False)), ("195Pt_Cisplatin", "Pt195Di", (False, False)),
+    ("Pt198Di", "Pt198Di", (False, False)), ("103Rh_Intercalator", "Rh103Di", (False, False)),
+    ("Zombie NIR", None, (False, False)),
+    # ... without catching real markers
+    ("LDLR", None, (True, False)), ("LDHA", None, (True, False)), ("CD57", None, (True, False)),
+    ("194Pt_CD8", "Pt194Di", (True, False)), ("Pt194Di", "Pt194Di", (True, False)),
+    # aliases: '_X_', '(X)', '/X'; state when any alias is
+    ("168Er_CD154__CD40L_", "Er168Di", (False, True)), ("CD154 (CD40L)", None, (False, True)),
+    ("CD40L/CD154", None, (False, True)), ("CD3_(UCHT1)", None, (True, False)),
+    # DNA damage and PD-L1
+    ("172Yb_pH2A.X", "Yb172Di", (False, True)), ("pH2AX", None, (False, True)), ("gH2AX", None, (False, True)),
+    ("γH2AX", None, (False, True)), ("175Lu_PD-L1", "Lu175Di", (False, True)), ("CD274", None, (False, True)),
+    # DNA, beads, CD45
+    ("191Ir_DNA1", "Ir191Di", (False, False)), ("Ir193Di", "Ir193Di", (False, False)),
+    ("Intercalator-Ir", "Ir191Di", (False, False)), ("140Ce_Beads", "Ce140Di", (False, False)),
+    ("89Y_CD45", "Y89Di", (False, False)), ("CD45RA", None, (True, False)),
+])
+def test_default_flags_cytof(marker, channel, flags):
+    assert C.default_flags(marker, channel) == flags
+
+
+def test_gating_roles_and_aliases():
+    assert C.gating_role("115In_Dead", "In115Di") == "viability"
+    assert C.gating_role("191Ir_DNA1", "Ir191Di") == "dna"
+    assert C.gating_role("Intercalator-Rh", "Rh103Di") == "viability"
+    assert C.gating_role("103Rh_Intercalator") == "viability" and C.gating_role("191Ir_Intercalator") == "dna"
+    assert C.strip_mass_tag("Ki67_Er168Di") == "Ki67" and C.strip_mass_tag("B220_Er168") == "B220"
+    assert C.gating_role("140Ce_Beads", "Ce140Di") == "beads"
+    assert C.gating_role("CD4") is None
+    assert C.marker_aliases("168Er_CD154__CD40L_") == ["CD154CD40L", "CD154", "CD40L"]
+    assert C.marker_aliases("CD154 (CD40L)") == ["CD154CD40L", "CD154", "CD40L"]
+    assert C.marker_aliases("CD3") == ["CD3"]
+    assert C.strip_mass_tag("CD3_Yb171Di") == "CD3" and C.strip_mass_tag("171Yb_CD3") == "CD3"
+
+
+@pytest.mark.parametrize("channel", ["Event_length", "Center", "Offset", "Width", "Residual"])
+def test_helios_parameters_are_other(channel):
+    assert C.classify(channel, "") == "other" and C.classify(channel, channel) == "other"
+
+
 # --- panel ----------------------------------------------------------------------
 
 def test_panel_intersection_conflicts_and_spelling():

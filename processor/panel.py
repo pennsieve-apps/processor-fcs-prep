@@ -140,7 +140,7 @@ def configure(panel: Panel, cofactor_default: float, cofactors: dict, overrides:
             if value <= 0:
                 raise ValueError(f"COFACTORS[{hit[0]!r}] must be > 0")
             ch.cofactor = value
-        ch.clustering, ch.state = C.default_flags(ch.marker)
+        ch.clustering, ch.state = C.default_flags(ch.marker, ch.channel)
         hit = _lookup(overrides, ch)
         if hit:
             used.add("PANEL_OVERRIDES:" + hit[0])
