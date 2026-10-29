@@ -103,8 +103,9 @@ Files are handled one at a time; only the headers of all files are in memory tog
 | `n_events` | events written (after `MAX_EVENTS_PER_SAMPLE`) |
 | … | every other sample sheet column, unchanged (empty for files not in the sheet) |
 
-**`metadata/panel.csv`**: one row per channel kept: `channel` (`$PnN`), `marker` (`$PnS`, or
-the channel name), `type` (`marker` / `scatter` / `time` / `other`), `cofactor` (empty unless
+**`metadata/panel.csv`**: one row per channel kept: `channel` (`$PnN`), `marker` (`$PnS` without its
+mass tag, e.g. `154Sm_CD3` → `CD3`, `CD154__CD40L_` → `CD154 (CD40L)`, unless two channels
+would then share a name; or the channel name), `type` (`marker` / `scatter` / `time` / `other`), `cofactor` (empty unless
 transformed), `clustering` and `state` (`true`/`false`, markers only; see *Panel flags*).
 
 **`metadata/prep.json`**: run-level (`cytometerType`, `defaultCofactor`, the panel with the

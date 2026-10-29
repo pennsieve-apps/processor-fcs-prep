@@ -478,3 +478,18 @@ def test_written_text_has_no_doubled_delimiter(tmp_path):
     delim = text[0]
     assert delim * 2 not in text
     assert "CD154|CD40L" in text and "pregate=beads|dna|live" in text
+
+
+def test_panel_writes_marker_names_without_mass_tags():
+    # Downstream apps (FlowSOM's cell-type rules, diffcyt, the report) match markers by name,
+    # so a CyTOF panel must say CD3, not 154Sm_CD3.
+    h = P.Header("s1", ["Sm154Di", "Er168Di", "Ir191Di", "Nd145Di", "Nd146Di", "FSC-A"],
+                 ["154Sm_CD3", "168Er_CD154__CD40L_", "191Ir_DNA1", "145Nd_CD4", "CD4_Nd146Di", ""], {})
+    panel = P.build([h])
+    names = {c.channel: c.row()["marker"] for c in panel.channels}
+    assert names["Sm154Di"] == "CD3"
+    assert names["Er168Di"] == "CD154 (CD40L)"
+    assert names["Ir191Di"] == "DNA1"
+    # Two channels that would both become CD4 keep their source spelling.
+    assert names["Nd145Di"] == "145Nd_CD4" and names["Nd146Di"] == "CD4_Nd146Di"
+    assert names["FSC-A"] == "FSC-A"

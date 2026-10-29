@@ -219,7 +219,7 @@ def process_sample(rec: I.SampleRecord, header: P.Header, cyt_type: str, panel: 
         "PENNSIEVE_COFACTORS": cof_text or "none",
     })
     fcsio.write_fcs(fcs_dir / f"{rec.sample_id}.fcs", out,
-                    [c.channel for c in chans], [c.marker if c.marker != c.channel else "" for c in chans],
+                    [c.channel for c in chans], [c.out_name if c.marker != c.channel else "" for c in chans],
                     keywords, ranges(text, header.pnn, chans, out))
     result = {
         "events_in": n_in, "events_out": n_out, "subsampled": n_out < n_kept,
@@ -381,7 +381,7 @@ def main() -> int:
             "batch": rec.batch, "condition": rec.condition,
             "channels_dropped": panel.dropped.get(rec.sample_id, []),
             "markers_renamed": panel.renamed.get(rec.sample_id, []),
-            "cofactors": {c.marker: c.cofactor for c in panel.markers()},
+            "cofactors": {c.out_name: c.cofactor for c in panel.markers()},
             "notes": rec.notes,
         }
         try:

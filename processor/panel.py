@@ -11,6 +11,7 @@ every output file's $PnS is the most common spelling.
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -39,10 +40,17 @@ class Channel:
     clustering: bool = False
     state: bool = False
     spellings: list[str] = field(default_factory=list)
+    # The marker name written to panel.csv and $PnS: the source name without its mass tag
+    # ('154Sm_CD3' -> 'CD3'), so downstream apps see the same names for every cytometer.
+    name: str = ""
+
+    @property
+    def out_name(self) -> str:
+        return self.name or self.marker
 
     def row(self) -> dict[str, str]:
         cof = "" if self.cofactor is None else (f"{self.cofactor:g}")
-        return {"channel": self.channel, "marker": self.marker, "type": self.type, "cofactor": cof,
+        return {"channel": self.channel, "marker": self.out_name, "type": self.type, "cofactor": cof,
                 "clustering": str(self.clustering).lower(), "state": str(self.state).lower()}
 
 
@@ -89,15 +97,27 @@ def build(headers: list[Header]) -> Panel:
             continue
         marker = spellings[ch].most_common(1)[0][0]
         kept.append(Channel(ch, marker or ch, C.classify(ch, marker), spellings=sorted(spellings[ch])))
+    # Clean names: strip the mass tag, write Fluidigm's 'CD154__CD40L_' as 'CD154 (CD40L)'. A name
+    # that would then clash with another channel's keeps its source spelling.
+    clean = {}
+    for c in kept:
+        if c.type == "marker" and c.marker != c.channel:
+            n = C.strip_mass_tag(c.marker)
+            n = re.sub(r"_{2,}([^_]+)_?$", r" (\1)", n).strip("_ ")
+            clean[c.channel] = n or c.marker
+    counts = Counter(C.norm(v) for v in clean.values())
+    for c in kept:
+        if c.channel in clean and counts[C.norm(clean[c.channel])] == 1:
+            c.name = clean[c.channel]
     dropped: dict[str, list[dict]] = {}
     renamed: dict[str, list[dict]] = {}
     kept_map = {c.channel: c for c in kept}
     for h in headers:
         dropped[h.sample_id] = [{"channel": ch, "marker": mk, "reason": reasons[ch]}
                                 for ch, mk in h.markers.items() if ch in reasons]
-        renamed[h.sample_id] = [{"channel": ch, "from": mk, "to": kept_map[ch].marker}
+        renamed[h.sample_id] = [{"channel": ch, "from": mk, "to": kept_map[ch].out_name}
                                 for ch, mk in h.markers.items()
-                                if ch in kept_map and mk and mk != kept_map[ch].marker]
+                                if ch in kept_map and mk and mk != kept_map[ch].out_name]
     return Panel(kept, dropped, renamed)
 
 
