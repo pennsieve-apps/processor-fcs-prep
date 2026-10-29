@@ -1,0 +1,15 @@
+# local data: fixtures, outputs and real FCS files
+data/
+*.fcs
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+*.egg-info/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

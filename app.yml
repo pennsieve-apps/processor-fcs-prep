@@ -1,0 +1,103 @@
+# yaml-language-server: $schema=https://schemas.pennsieve.io/app-manifest/v1.json
+schemaVersion: "1.0"
+application:
+  name: FCS Prep
+  description: >-
+    The first step of the immune cytometry workflows. Reads FCS files (conventional, spectral or
+    mass cytometry) and an optional sample sheet, works out the panel common to every sample,
+    compensates when the data need it, arcsinh-transforms the marker channels (FlowKit/FlowIO,
+    White et al. 2021) and writes one FCS 3.1 float32 file per sample with samples.csv,
+    panel.csv (clustering and state markers) and prep.json for the steps that follow.
+  type: processor
+  tags:
+    - cytometry
+    - flow-cytometry
+    - spectral-flow
+    - mass-cytometry
+    - fcs
+    - preprocessing
+    - immunology
+runtime:
+  # One file at a time, single-threaded; the demo (24 files, 10.2 M events, 1.46 GB)
+  # peaks at 1.8 GB including page cache and takes ~30 s (see README "Runtime").
+  cpu: 2048
+  memory: 4096
+  computeTypes:
+    - standard
+  timeoutSeconds: 3600
+parameters:
+  - name: SAMPLE_SHEET
+    type: string
+    label: Sample sheet
+    description: >-
+      Name of the sample sheet CSV, looked for anywhere in the input. It needs a `file` column
+      (FCS file names); `sample_id`, `batch` and `condition` are used when present and every
+      other column is carried into samples.csv. Without a sheet: sample_id = file stem, batch =
+      the file's $DATE, condition = NA.
+    defaultValue: samples.csv
+  - name: COMPENSATE
+    type: string
+    label: Compensation
+    description: >-
+      auto applies the file's $SPILLOVER when it is not the identity and the cytometer is not
+      spectral (unmixed) or mass; true applies any non-identity $SPILLOVER; false never compensates.
+    defaultValue: auto
+    validValues: [auto, "true", "false"]
+  - name: COFACTOR
+    type: string
+    label: arcsinh cofactor
+    description: >-
+      Cofactor c of arcsinh(x / c) for marker channels, or auto: 5 for mass cytometry, 6000 for
+      spectral flow, 150 for conventional flow (the values cyCombine recommends).
+    defaultValue: auto
+  - name: COFACTORS
+    type: string
+    label: Per-marker cofactors
+    description: 'JSON object of per-marker (or channel) cofactors overriding COFACTOR, e.g. {"CD3": 3000}.'
+    defaultValue: "{}"
+  - name: PANEL_OVERRIDES
+    type: string
+    label: Panel flag overrides
+    description: >-
+      JSON object changing panel.csv flags per marker (or channel), e.g.
+      {"CD25": {"clustering": true}, "HLADR": {"clustering": true, "state": false}}.
+    defaultValue: "{}"
+  - name: MAX_EVENTS_PER_SAMPLE
+    type: integer
+    label: Events per sample
+    description: Keep at most this many events per sample (seeded random subset, acquisition order kept); 0 keeps all.
+    defaultValue: 0
+    min: 0
+  - name: SEED
+    type: integer
+    label: Random seed
+    description: Seed for the MAX_EVENTS_PER_SAMPLE subsample.
+    defaultValue: 42
+inputs:
+  - name: fcs
+    description: >-
+      FCS 2.0/3.0/3.1 files (*.fcs, anywhere in the input, folders and symlinks followed) and an
+      optional sample sheet (SAMPLE_SHEET, default samples.csv).
+    mediaTypes:
+      - application/vnd.isac.fcs
+      - text/csv
+    placement: root
+    required: true
+# Two outputs: each is written to its own folder, OUTPUT_DIR/<name>/.
+outputs:
+  - name: fcs
+    description: >-
+      <sample_id>.fcs per sample: FCS 3.1 float32, the panel's channels only (scatter, Time, other,
+      markers), marker channels arcsinh-transformed, $PnN/$PnS kept, PENNSIEVE_PREP keyword;
+      plus provenance.json.
+    mediaTypes:
+      - application/vnd.isac.fcs
+      - application/json
+  - name: metadata
+    description: >-
+      samples.csv (sample_id, file, batch, condition, n_events, sample sheet columns), panel.csv
+      (channel, marker, type, cofactor, clustering, state), prep.json (per sample: cytometer,
+      date, events, channels dropped, compensation, cofactors) and provenance.json.
+    mediaTypes:
+      - text/csv
+      - application/json
