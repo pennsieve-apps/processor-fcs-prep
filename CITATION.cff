@@ -1,0 +1,302 @@
+cff-version: "1.2.0"
+message: If you use this app, please cite it and the works it builds on, listed under references.
+type: software
+title: FCS Prep
+abstract: The first step of the immune cytometry workflows. Reads FCS files (conventional, spectral or
+  mass cytometry), works out the common panel, compensates when needed and arcsinh-transforms the marker
+  channels with FlowKit, writing one FCS 3.1 file per sample plus the sample sheet and panel for the steps
+  that follow.
+authors:
+- name: Pennsieve (University of Pennsylvania)
+repository-code: https://github.com/pennsieve-apps/processor-fcs-prep
+license: Apache-2.0
+keywords:
+- cytometry
+- flow-cytometry
+- spectral-flow
+- mass-cytometry
+- fcs
+- preprocessing
+- immunology
+references:
+- type: article
+  title: 'FlowKit: A Python Toolkit for Integrated Manual and Automated Cytometry Analysis Workflows'
+  authors:
+  - family-names: White
+    given-names: Scott
+  - family-names: Quinn
+    given-names: John
+  - family-names: Enzor
+    given-names: Jennifer
+  - family-names: Staats
+    given-names: Janet
+  - family-names: Mosier
+    given-names: Sarah M.
+  - family-names: Almarode
+    given-names: James
+  - family-names: Denny
+    given-names: Thomas N.
+  - family-names: Weinhold
+    given-names: Kent J.
+  - family-names: Ferrari
+    given-names: Guido
+  - family-names: Chan
+    given-names: Cliburn
+  year: 2021
+  journal: Frontiers in Immunology
+  volume: 12
+  start: '768541'
+  doi: 10.3389/fimmu.2021.768541
+- type: article
+  title: cyCombine allows for robust integration of single-cell cytometry datasets within and across technologies
+  authors:
+  - family-names: Pedersen
+    given-names: Christina Bligaard
+  - family-names: Dam
+    given-names: Søren Helweg
+  - family-names: Barnkob
+    given-names: Mike Bogetofte
+  - family-names: Leipold
+    given-names: Michael D.
+  - family-names: Purroy
+    given-names: Noelia
+  - family-names: Rassenti
+    given-names: Laura Z.
+  - family-names: Kipps
+    given-names: Thomas J.
+  - family-names: Nguyen
+    given-names: Jennifer
+  - family-names: Lederer
+    given-names: James Arthur
+  - family-names: Gohil
+    given-names: Satyen Harish
+  - family-names: Wu
+    given-names: Catherine J.
+  - family-names: Olsen
+    given-names: Lars Rønn
+  year: 2022
+  journal: Nature Communications
+  volume: 13
+  issue: '1'
+  start: '1698'
+  doi: 10.1038/s41467-022-29383-5
+- type: article
+  title: Single-Cell Mass Cytometry of Differential Immune and Drug Responses Across a Human Hematopoietic
+    Continuum
+  authors:
+  - family-names: Bendall
+    given-names: Sean C.
+  - family-names: Simonds
+    given-names: Erin F.
+  - family-names: Qiu
+    given-names: Peng
+  - family-names: Amir
+    given-names: El-ad D.
+  - family-names: Krutzik
+    given-names: Peter O.
+  - family-names: Finck
+    given-names: Rachel
+  - family-names: Bruggner
+    given-names: Robert V.
+  - family-names: Melamed
+    given-names: Rachel
+  - family-names: Trejo
+    given-names: Angelica
+  - family-names: Ornatsky
+    given-names: Olga I.
+  - family-names: Balderas
+    given-names: Robert S.
+  - family-names: Plevritis
+    given-names: Sylvia K.
+  - family-names: Sachs
+    given-names: Karen
+  - family-names: Pe’er
+    given-names: Dana
+  - family-names: Tanner
+    given-names: Scott D.
+  - family-names: Nolan
+    given-names: Garry P.
+  year: 2011
+  journal: Science
+  volume: 332
+  issue: '6030'
+  start: '687'
+  end: '696'
+  doi: 10.1126/science.1198704
+- type: article
+  title: 'CyTOF workflow: differential discovery in high-throughput high-dimensional cytometry datasets'
+  authors:
+  - family-names: Nowicka
+    given-names: Malgorzata
+  - family-names: Krieg
+    given-names: Carsten
+  - family-names: Crowell
+    given-names: Helena L.
+  - family-names: Weber
+    given-names: Lukas M.
+  - family-names: Hartmann
+    given-names: Felix J.
+  - family-names: Guglietta
+    given-names: Silvia
+  - family-names: Becher
+    given-names: Burkhard
+  - family-names: Levesque
+    given-names: Mitchell P.
+  - family-names: Robinson
+    given-names: Mark D.
+  year: 2017
+  journal: F1000Research
+  volume: 6
+  start: '748'
+  doi: 10.12688/f1000research.11622.3
+- type: article
+  title: 'diffcyt: Differential discovery in high-dimensional cytometry via high-resolution clustering'
+  authors:
+  - family-names: Weber
+    given-names: Lukas M.
+  - family-names: Nowicka
+    given-names: Malgorzata
+  - family-names: Soneson
+    given-names: Charlotte
+  - family-names: Robinson
+    given-names: Mark D.
+  year: 2019
+  journal: Communications Biology
+  volume: 2
+  issue: '1'
+  start: '183'
+  doi: 10.1038/s42003-019-0415-5
+- type: article
+  title: Deep immune profiling of COVID-19 patients reveals distinct immunotypes with therapeutic implications
+  authors:
+  - family-names: Mathew
+    given-names: Divij
+  - family-names: Giles
+    given-names: Josephine R.
+  - family-names: Baxter
+    given-names: Amy E.
+  - family-names: Oldridge
+    given-names: Derek A.
+  - family-names: Greenplate
+    given-names: Allison R.
+  - family-names: Wu
+    given-names: Jennifer E.
+  - family-names: Alanio
+    given-names: Cécile
+  - family-names: Kuri-Cervantes
+    given-names: Leticia
+  - family-names: Pampena
+    given-names: M. Betina
+  - family-names: D’Andrea
+    given-names: Kurt
+  - family-names: Manne
+    given-names: Sasikanth
+  - family-names: Chen
+    given-names: Zeyu
+  - family-names: Huang
+    given-names: Yinghui Jane
+  - family-names: Reilly
+    given-names: John P.
+  - family-names: Weisman
+    given-names: Ariel R.
+  - family-names: Ittner
+    given-names: Caroline A. G.
+  - family-names: Kuthuru
+    given-names: Oliva
+  - family-names: Dougherty
+    given-names: Jeanette
+  - family-names: Nzingha
+    given-names: Kito
+  - family-names: Han
+    given-names: Nicholas
+  - family-names: Kim
+    given-names: Justin
+  - family-names: Pattekar
+    given-names: Ajinkya
+  - family-names: Goodwin
+    given-names: Eileen C.
+  - family-names: Anderson
+    given-names: Elizabeth M.
+  - family-names: Weirick
+    given-names: Madison E.
+  - family-names: Gouma
+    given-names: Sigrid
+  - family-names: Arevalo
+    given-names: Claudia P.
+  - family-names: Bolton
+    given-names: Marcus J.
+  - family-names: Chen
+    given-names: Fang
+  - family-names: Lacey
+    given-names: Simon F.
+  - family-names: Ramage
+    given-names: Holly
+  - family-names: Cherry
+    given-names: Sara
+  - family-names: Hensley
+    given-names: Scott E.
+  - family-names: Apostolidis
+    given-names: Sokratis A.
+  - family-names: Huang
+    given-names: Alexander C.
+  - family-names: Vella
+    given-names: Laura A.
+  - name: The UPenn COVID Processing Unit
+  - family-names: Betts
+    given-names: Michael R.
+  - family-names: Meyer
+    given-names: Nuala J.
+  - family-names: Wherry
+    given-names: E. John
+  - family-names: Alam
+    given-names: Zahidul
+  - family-names: Addison
+    given-names: Mary M.
+  - family-names: Byrne
+    given-names: Katelyn T.
+  - family-names: Chandra
+    given-names: Aditi
+  - family-names: Descamps
+    given-names: Hélène C.
+  - family-names: Kaminskiy
+    given-names: Yaroslav
+  - family-names: Hamilton
+    given-names: Jacob T.
+  - family-names: Noll
+    given-names: Julia Han
+  - family-names: Omran
+    given-names: Dalia K.
+  - family-names: Perkey
+    given-names: Eric
+  - family-names: Prager
+    given-names: Elizabeth M.
+  - family-names: Pueschl
+    given-names: Dana
+  - family-names: Shah
+    given-names: Jennifer B.
+  - family-names: Shilan
+    given-names: Jake S.
+  - family-names: Vanderbeck
+    given-names: Ashley N.
+  year: 2020
+  journal: Science
+  volume: 369
+  issue: '6508'
+  start: eabc8511
+  doi: 10.1126/science.abc8511
+- type: data
+  title: 'CytoBatchFlagR: Spectral flow cytometry dataset'
+  authors:
+  - family-names: Koenig
+    given-names: Zachary
+  - family-names: Andorf
+    given-names: Sandra
+  - family-names: Tilburgs
+    given-names: Tamara
+  - family-names: Eswar
+    given-names: Shruti
+  year: 2025
+  publisher:
+    name: Zenodo
+  doi: 10.5281/zenodo.15388817
+  license: CC-BY-4.0
