@@ -206,9 +206,9 @@ def process_sample(rec: I.SampleRecord, header: P.Header, cyt_type: str, panel: 
 
     cof_text = ",".join(f"{c.channel}={c.cofactor:g}" for c in chans if c.type == "marker")
     distinct = sorted({c.cofactor for c in chans if c.type == "marker"})
-    prep = (f"transform=arcsinh;cofactor={'/'.join(f'{v:g}' for v in distinct) or 'none'};"
+    prep = (f"transform=arcsinh;cofactor={'+'.join(f'{v:g}' for v in distinct) or 'none'};"
             f"compensation={'applied' if apply_comp else 'none'};events={n_out}"
-            + (f";pregate=beads/dna/live;pregated_from={n_in}" if gate_summary is not None else "")
+            + (f";pregate=beads+dna+live;pregated_from={n_in}" if gate_summary is not None else "")
             + (f";subsampled_from={n_kept}" if n_out < n_kept else "") + f";app={APP_NAME}@{app_version}")
     keywords = {k: text[k] for k in KEEP_KEYWORDS if text.get(k)}
     keywords["fil"] = f"{rec.sample_id}.fcs"

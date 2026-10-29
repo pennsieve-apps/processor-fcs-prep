@@ -81,7 +81,7 @@ CyTOF clean-up sequence (Bagwell et al. 2020); the gate plots use Matplotlib.
    order, `$PnN`/`$PnS` kept (harmonised marker names), `$DATE`, `$BTIM`, `$ETIM`, `$CYT`,
    `$CYTSN`, `$TIMESTEP` and other descriptive keywords copied, `$FIL` set to the new name, plus
    `PENNSIEVE_PREP` (e.g. `transform=arcsinh;cofactor=6000;compensation=none;events=559685;
-   app=processor-fcs-prep@0.1.0`; pre-gated files add `pregate=beads/dna/live;pregated_from=N`),
+   app=processor-fcs-prep@0.1.0`; pre-gated files add `pregate=beads+dna+live;pregated_from=N`),
    `PENNSIEVE_SAMPLE_ID`, `PENNSIEVE_SOURCE_FILE` and
    `PENNSIEVE_COFACTORS` (channel=cofactor list). `$SPILLOVER` is not copied: the output is
    either compensated already or was never meant to be. `$PnR` is the source's range, raised

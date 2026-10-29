@@ -343,7 +343,7 @@ def test_end_to_end_cytof(tmp_path, monkeypatch):
         # subsample drawn from the gated events
         assert s["events_out"] == min(4000, pg["events_out"])
     fd, pnn, _, ev = read_fcs(out / "fcs" / "pt01_pre_tx.fcs")
-    assert "pregate=beads/dna/live" in fd.text["pennsieve_prep"]
+    assert "pregate=beads+dna+live" in fd.text["pennsieve_prep"]
     assert np.all(np.diff(ev[:, pnn.index("Time")]) >= 0)
     # the gated events are gone: no bead events left
     assert ev[:, pnn.index("Ce140Di")].max() < prep["samples"]["pt01_pre_tx"]["pregate"]["thresholds"]["bead"]
@@ -459,3 +459,22 @@ def test_failures(tmp_path, monkeypatch):
     assert run(monkeypatch, tmp_path / "in", tmp_path / "out") == 1
     assert run(monkeypatch, tmp_path / "in", tmp_path / "out", COMPENSATE="maybe") == 2
     assert run(monkeypatch, tmp_path / "in", tmp_path / "out", COFACTORS="{bad") == 2
+
+
+def test_written_text_has_no_doubled_delimiter(tmp_path):
+    # flowCore's read.FCS refuses '//' (an escaped '/' in a value) as an empty keyword value,
+    # so nothing fcs-prep writes may contain the delimiter.
+    import numpy as np
+    from processor import fcsio
+
+    path = tmp_path / "x.fcs"
+    events = np.zeros((10, 2), dtype=np.float32)
+    fcsio.write_fcs(path, events, ["Ce140Di", "Nd145Di"], ["140Ce_Beads", "CD154/CD40L"],
+                    {"PENNSIEVE_PREP": "pregate=beads/dna/live;cofactor=5/150", "src": "a/b"},
+                    ["10", "10"])
+    raw = path.read_bytes()
+    start, end = int(raw[10:18]), int(raw[18:26])
+    text = raw[start:end + 1].decode("latin-1")
+    delim = text[0]
+    assert delim * 2 not in text
+    assert "CD154|CD40L" in text and "pregate=beads|dna|live" in text

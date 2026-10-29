@@ -17,7 +17,10 @@ def read_header(path: Path) -> tuple[dict, list[str], list[str], int, str]:
     text = fd.text
     n = int(text["par"])
     pnn = [text.get(f"p{i}n", f"P{i}").strip() for i in range(1, n + 1)]
-    pns = [(text.get(f"p{i}s") or "").strip() for i in range(1, n + 1)]
+    # '/' is the delimiter of the TEXT segment we write: FlowIO escapes it as '//' (valid FCS),
+    # which flowCore's read.FCS takes for an empty value and refuses. Marker names keep their
+    # meaning with '|' ('CD154/CD40L' -> 'CD154|CD40L'; marker_aliases splits on both).
+    pns = [fcs_safe((text.get(f"p{i}s") or "").strip()) for i in range(1, n + 1)]
     if len(set(pnn)) != len(pnn):
         raise ValueError("duplicate $PnN channel names")
     return text, pnn, pns, int(text.get("tot", 0) or 0), fd.version
@@ -108,6 +111,11 @@ def read_events(path: Path, spill: tuple[list[str], np.ndarray] | None):
     return events, list(sample.pnn_labels), off_by_one
 
 
+def fcs_safe(value: str) -> str:
+    """A keyword value without the TEXT delimiter '/', so every reader parses it (see read_header)."""
+    return value.replace("/", "|")
+
+
 def write_fcs(path: Path, events: np.ndarray, pnn: list[str], pns: list[str], keywords: dict[str, str],
               ranges: list[str]) -> None:
     """Write FCS 3.1, float32, little-endian, with $PnN/$PnS/$PnR and extra keywords (FlowIO create_fcs)."""
@@ -115,7 +123,8 @@ def write_fcs(path: Path, events: np.ndarray, pnn: list[str], pns: list[str], ke
 
     data = array("f")
     data.frombytes(np.ascontiguousarray(events, dtype="<f4").tobytes())
-    meta = {k: v for k, v in keywords.items() if v not in (None, "")}
+    meta = {k: fcs_safe(str(v)) for k, v in keywords.items() if v not in (None, "")}
+    pns = [fcs_safe(p) for p in pns]
     for i, r in enumerate(ranges, start=1):
         if r:
             meta[f"p{i}r"] = r
