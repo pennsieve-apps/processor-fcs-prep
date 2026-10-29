@@ -45,15 +45,46 @@ def is_identity(matrix: np.ndarray, atol: float = 1e-4) -> bool:
     return bool(np.allclose(matrix, np.eye(matrix.shape[0]), atol=atol))
 
 
+def is_offset_off_by_one(exc: BaseException) -> bool:
+    """FlowIO's error for files whose $ENDDATA points one byte past the DATA segment."""
+    from flowio.exceptions import FCSParsingError
+
+    return isinstance(exc, FCSParsingError) and "off by 1" in str(exc)
+
+
+def open_sample(path: Path):
+    """
+    FlowKit Sample of all events, and whether ignore_offset_error was needed.
+
+    Some writers (the CyTOF software and the Nolan lab bead normaliser among them)
+    record $ENDDATA one byte past the DATA segment; FlowIO refuses those files unless
+    told to ignore that one error. Only that error is retried; any other offset
+    problem still fails the file.
+    """
+    import warnings
+
+    import flowkit as fk
+
+    try:
+        return fk.Sample(str(path), subsample=0), False
+    except Exception as exc:  # noqa: BLE001
+        if not is_offset_off_by_one(exc):
+            raise
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # FlowIO's own warning; the caller logs one line per file
+        return fk.Sample(str(path), subsample=0, ignore_offset_error=True), True
+
+
 def read_events(path: Path, spill: tuple[list[str], np.ndarray] | None):
     """
     All events as float64 (events x channels), via FlowKit's Sample, which applies
     $PnG/$PnE scaling for integer data. With `spill`, the events of the detectors in
     the matrix are compensated (FlowKit Matrix: events @ inverse(spillover)).
+    Returns (events, $PnN list, offset_off_by_one: bool).
     """
     import flowkit as fk
 
-    sample = fk.Sample(str(path), subsample=0)
+    sample, off_by_one = open_sample(path)
     if spill is not None:
         names, values = spill
         matrix = fk.Matrix(values, detectors=names)
@@ -74,7 +105,7 @@ def read_events(path: Path, spill: tuple[list[str], np.ndarray] | None):
         if step > 0:
             events = events.copy() if not events.flags.writeable else events
             events[:, ti] = events[:, ti] / step
-    return events, list(sample.pnn_labels)
+    return events, list(sample.pnn_labels), off_by_one
 
 
 def write_fcs(path: Path, events: np.ndarray, pnn: list[str], pns: list[str], keywords: dict[str, str],

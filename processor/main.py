@@ -10,6 +10,8 @@ arcsinh(x / cofactor) to the marker channels and writes
   OUTPUT_DIR/metadata/samples.csv       sample_id, file, batch, condition, n_events, sheet columns
   OUTPUT_DIR/metadata/panel.csv         channel, marker, type, cofactor, clustering, state
   OUTPUT_DIR/metadata/prep.json         per-sample details (cytometer, compensation, dropped channels, ...)
+  OUTPUT_DIR/metadata/gating.csv        per-sample pre-gating counts and thresholds (when PREGATE applies)
+  OUTPUT_DIR/metadata/gates/<id>.png    per-sample gate plots (when PREGATE applies)
   OUTPUT_DIR/metadata/provenance.json
 
 Files are processed one at a time; only headers are read up front.
@@ -37,6 +39,7 @@ from processor import channels as C
 from processor import fcsio
 from processor import inputs as I
 from processor import panel as P
+from processor import pregate as G
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 log = logging.getLogger("processor-fcs-prep")
@@ -61,7 +64,7 @@ def version_of(root: Path) -> str:
 
 def tool_versions() -> dict[str, str]:
     out = {"python": platform.python_version()}
-    for pkg in ("FlowKit", "FlowIO", "FlowUtils", "numpy", "pandas"):
+    for pkg in ("FlowKit", "FlowIO", "FlowUtils", "numpy", "pandas", "scipy", "matplotlib"):
         try:
             out[pkg.lower()] = importlib_metadata.version(pkg)
         except importlib_metadata.PackageNotFoundError:
@@ -73,6 +76,7 @@ def env_params() -> dict[str, str]:
     return {
         "SAMPLE_SHEET": os.environ.get("SAMPLE_SHEET", "samples.csv"),
         "COMPENSATE": (os.environ.get("COMPENSATE") or "auto").strip().lower(),
+        "PREGATE": (os.environ.get("PREGATE") or "auto").strip().lower(),
         "COFACTOR": (os.environ.get("COFACTOR") or "auto").strip(),
         "COFACTORS": os.environ.get("COFACTORS") or "{}",
         "PANEL_OVERRIDES": os.environ.get("PANEL_OVERRIDES") or "{}",
@@ -128,9 +132,23 @@ def ranges(text: dict, pnn: list[str], chans: list, out: np.ndarray) -> list[str
     return result
 
 
+def gating_cofactors(panel: P.Panel, gc: G.GateChannels, main_type: str) -> dict[str, float]:
+    """arcsinh cofactor per gating channel: 5 for mass cytometry (the gates are tuned on it), else the panel's."""
+    by = panel.by_channel()
+    return {c: (5.0 if main_type == "mass" else (by[c].cofactor or 5.0)) for c in gc.dna + gc.beads + gc.viability}
+
+
+def threshold_text(th: dict) -> str:
+    keys = ("bead", "dna_low", "dna_high", "dna_diagonal_center", "dna_diagonal_halfwidth", "dead")
+    return ";".join(f"{k}={'NA' if th.get(k) is None else th[k]}" for k in keys if k in th)
+
+
 def process_sample(rec: I.SampleRecord, header: P.Header, cyt_type: str, panel: P.Panel, params: dict,
-                   fcs_dir: Path, app_version: str) -> dict[str, Any]:
-    """Compensate, select, transform and write one sample. Raises on failure."""
+                   fcs_dir: Path, app_version: str, gating: dict | None = None) -> dict[str, Any]:
+    """
+    Compensate, pre-gate (when `gating` is given), select, transform and write one
+    sample. Raises on failure.
+    """
     t0 = time.monotonic()
     text = header.text
     spill = fcsio.parse_spill(text)
@@ -139,12 +157,40 @@ def process_sample(rec: I.SampleRecord, header: P.Header, cyt_type: str, panel: 
         missing = [d for d in spill[0] if d not in header.pnn]
         if missing:
             raise ValueError(f"$SPILLOVER names detectors not in the file: {', '.join(missing)}")
-    events, pnn = fcsio.read_events(rec.path, spill if apply_comp else None)
+    events, pnn, off_by_one = fcsio.read_events(rec.path, spill if apply_comp else None)
+    if off_by_one:
+        log.warning("%s: the file's DATA end offset ($ENDDATA) is off by one byte (a known writer bug, e.g. the "
+                    "CyTOF software and bead normaliser); read with ignore_offset_error=True", rec.sample_id)
     n_in = events.shape[0]
     if n_in == 0:
         raise ValueError("no events")
-    idx = subsample_index(n_in, params["max_events"], params["seed"], rec.sample_id)
     col = {c: i for i, c in enumerate(pnn)}
+    gate_summary = None
+    rows = None  # event rows to write (None = all)
+    if gating is not None:
+        gc = gating["channels"]
+        res = G.gate({c: events[:, col[c]] for c in gc.dna + gc.beads + gc.viability}, gc, gating["cofactors"],
+                     mass=gating["mass"])
+        gate_summary = res.summary()
+        for w in res.warnings:
+            log.warning("%s: %s", rec.sample_id, w)
+        th = res.thresholds
+        log.info("%s: pregate %d -> beads -%d, DNA -%d, dead -%d -> %d events (%.1f%% kept; %s)", rec.sample_id,
+                 n_in, res.beads_removed, res.dna_removed, res.dead_removed, res.events_out,
+                 100.0 * res.events_out / n_in, threshold_text(th))
+        try:
+            G.plot(res, gc, gating["labels"], rec.sample_id, gating["plot_dir"] / f"{rec.sample_id}.png",
+                   seed=params["seed"])
+            gate_summary["plot"] = f"gates/{rec.sample_id}.png"
+        except Exception as exc:  # noqa: BLE001 - a plot must not fail the sample
+            log.warning("%s: gate plot failed: %s", rec.sample_id, exc)
+        rows = np.flatnonzero(res.keep)
+        if len(rows) == 0:
+            raise ValueError("no events left after pre-gating")
+    n_kept = n_in if rows is None else len(rows)
+    idx = subsample_index(n_kept, params["max_events"], params["seed"], rec.sample_id)
+    if rows is not None:
+        idx = rows if idx is None else rows[idx]
     chans = panel.channels
     out = np.empty((n_in if idx is None else len(idx), len(chans)), dtype=np.float32)
     for j, ch in enumerate(chans):
@@ -162,7 +208,8 @@ def process_sample(rec: I.SampleRecord, header: P.Header, cyt_type: str, panel: 
     distinct = sorted({c.cofactor for c in chans if c.type == "marker"})
     prep = (f"transform=arcsinh;cofactor={'/'.join(f'{v:g}' for v in distinct) or 'none'};"
             f"compensation={'applied' if apply_comp else 'none'};events={n_out}"
-            + (f";subsampled_from={n_in}" if idx is not None else "") + f";app={APP_NAME}@{app_version}")
+            + (f";pregate=beads/dna/live;pregated_from={n_in}" if gate_summary is not None else "")
+            + (f";subsampled_from={n_kept}" if n_out < n_kept else "") + f";app={APP_NAME}@{app_version}")
     keywords = {k: text[k] for k in KEEP_KEYWORDS if text.get(k)}
     keywords["fil"] = f"{rec.sample_id}.fcs"
     keywords.update({
@@ -174,12 +221,16 @@ def process_sample(rec: I.SampleRecord, header: P.Header, cyt_type: str, panel: 
     fcsio.write_fcs(fcs_dir / f"{rec.sample_id}.fcs", out,
                     [c.channel for c in chans], [c.marker if c.marker != c.channel else "" for c in chans],
                     keywords, ranges(text, header.pnn, chans, out))
-    return {
-        "events_in": n_in, "events_out": n_out, "subsampled": idx is not None,
+    result = {
+        "events_in": n_in, "events_out": n_out, "subsampled": n_out < n_kept,
+        "ignore_offset_error": off_by_one,
         "compensation": {"applied": apply_comp, "reason": comp_reason,
                          "detectors": spill[0] if (spill and apply_comp) else []},
         "nonfinite_values": n_nonfinite, "seconds": round(time.monotonic() - t0, 2),
     }
+    if gate_summary is not None:
+        result["pregate"] = gate_summary
+    return result
 
 
 def write_csv(path: Path, header: list[str], rows: list[dict]) -> None:
@@ -205,6 +256,8 @@ def main() -> int:
     try:
         if params["COMPENSATE"] not in ("auto", "true", "false"):
             raise ValueError(f"COMPENSATE must be auto, true or false (got {params['COMPENSATE']!r})")
+        if params["PREGATE"] not in ("auto", "true", "false"):
+            raise ValueError(f"PREGATE must be auto, true or false (got {params['PREGATE']!r})")
         cofactor_param = None
         if params["COFACTOR"].lower() != "auto":
             cofactor_param = float(params["COFACTOR"])
@@ -300,6 +353,21 @@ def main() -> int:
     write_csv(meta_dir / "panel.csv", ["channel", "marker", "type", "cofactor", "clustering", "state"],
               [c.row() for c in panel.channels])
 
+    # pre-gating plan (run level)
+    gate_channels = G.find_channels(panel.channels)
+    pregate_on, pregate_reason = G.plan(params["PREGATE"], main_type, gate_channels)
+    gating = None
+    if pregate_on:
+        if main_type != "mass":
+            log.warning("pre-gating %s data: the gates are tuned for mass cytometry; check the gate plots", main_type)
+        if not gate_channels.dna:
+            log.warning("pre-gating without a DNA channel: only %s",
+                        " and ".join(k for k in ("beads", "viability") if getattr(gate_channels, k)))
+        gating = {"channels": gate_channels, "cofactors": gating_cofactors(panel, gate_channels, main_type),
+                  "labels": {c.channel: c.marker for c in panel.channels}, "plot_dir": meta_dir / "gates",
+                  "mass": main_type == "mass"}
+    log.info("pregate: %s", pregate_reason)
+
     # 3. one sample at a time
     sample_rows: list[dict] = []
     prep_samples: dict[str, Any] = {}
@@ -317,7 +385,7 @@ def main() -> int:
             "notes": rec.notes,
         }
         try:
-            result = process_sample(rec, header, cyt_type, panel, params, fcs_dir, app_version)
+            result = process_sample(rec, header, cyt_type, panel, params, fcs_dir, app_version, gating)
         except Exception as exc:  # noqa: BLE001 - one sample's failure must not sink the run
             log.error("%s: FAILED: %s\n%s", rel(rec.path), exc, traceback.format_exc())
             skipped.append({"file": rel(rec.path), "sample_id": rec.sample_id, "reason": f"{type(exc).__name__}: {exc}"})
@@ -333,17 +401,30 @@ def main() -> int:
                              "events_out": result["events_out"], "seconds": result["seconds"]})
         log.info("%s: %s -> %d events%s, %d channels (%d markers), compensation %s, %d dropped, %.1fs",
                  rec.sample_id, rec.file, result["events_out"],
-                 f" (of {result['events_in']})" if result["subsampled"] else "", len(panel.channels),
+                 (f" (of {result['pregate']['events_out']} pre-gated from {result['events_in']})"
+                  if "pregate" in result else f" (of {result['events_in']})") if result["subsampled"]
+                 else (f" (pre-gated from {result['events_in']})" if "pregate" in result else ""), len(panel.channels),
                  len(panel.markers()), "applied" if result["compensation"]["applied"] else "none",
                  len(details["channels_dropped"]), result["seconds"])
 
     write_csv(meta_dir / "samples.csv", list(I.REQUIRED_COLUMNS) + sheet.columns, sample_rows)
+    if gating is not None:
+        write_csv(meta_dir / "gating.csv", ["sample_id", "events_in", "beads_removed", "dna_removed", "dead_removed",
+                                            "events_out", "thresholds"],
+                  [{"sample_id": sid, **{k: d["pregate"][k] for k in ("events_in", "beads_removed", "dna_removed",
+                                                                      "dead_removed", "events_out")},
+                    "thresholds": threshold_text(d["pregate"]["thresholds"])}
+                   for sid, d in prep_samples.items() if "pregate" in d])
     finished = datetime.now(timezone.utc)
     prep_doc = {
         "app": APP_NAME, "appVersion": app_version, "generatedAt": finished.isoformat(timespec="seconds"),
         "cytometerType": main_type, "defaultCofactor": default_cof,
         "panel": [c.row() | {"spellings": c.spellings} for c in panel.channels],
         "channelsDropped": dropped_channels,
+        "pregate": {"mode": params["PREGATE"], "applied": pregate_on, "reason": pregate_reason,
+                    "channels": gate_channels.as_dict(),
+                    **({"cofactors": gating["cofactors"], "method": G.METHOD, "settings": G.settings()}
+                       if gating else {})},
         "samples": prep_samples, "skipped": skipped,
     }
     with open(meta_dir / "prep.json", "w") as fh:

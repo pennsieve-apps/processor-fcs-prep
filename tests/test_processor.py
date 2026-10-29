@@ -16,6 +16,7 @@ from processor import fcsio
 from processor import inputs as I
 from processor import main as M
 from processor import panel as P
+from processor import pregate as G
 from tests import make_fixture
 
 N = 1500
@@ -27,7 +28,8 @@ def fixture_dir(tmp_path_factory) -> Path:
 
 
 def run(monkeypatch, input_dir: Path, output_dir: Path, **env) -> int:
-    for k in ("SAMPLE_SHEET", "COMPENSATE", "COFACTOR", "COFACTORS", "PANEL_OVERRIDES", "MAX_EVENTS_PER_SAMPLE", "SEED"):
+    for k in ("SAMPLE_SHEET", "COMPENSATE", "PREGATE", "COFACTOR", "COFACTORS", "PANEL_OVERRIDES",
+              "MAX_EVENTS_PER_SAMPLE", "SEED"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("INPUT_DIR", str(input_dir))
     monkeypatch.setenv("OUTPUT_DIR", str(output_dir))
@@ -192,7 +194,7 @@ def test_compensation_recovers_true_values(tmp_path):
     text, *_ = fcsio.read_header(tmp_path / "c.fcs")
     parsed = fcsio.parse_spill(text)
     assert parsed[0] == ["FITC-A", "PE-A"] and np.allclose(parsed[1], spill)
-    events, pnn = fcsio.read_events(tmp_path / "c.fcs", parsed)
+    events, pnn, off_by_one = fcsio.read_events(tmp_path / "c.fcs", parsed)
     assert np.allclose(events[:, 1:3], true[:, 1:3], rtol=1e-3, atol=1.0)
 
 
@@ -202,6 +204,157 @@ def test_subsample_index_is_seeded_and_sorted():
     assert np.array_equal(a, M.subsample_index(1000, 100, 42, "s1"))
     assert not np.array_equal(a, M.subsample_index(1000, 100, 42, "s2"))
     assert M.subsample_index(50, 100, 42, "s1") is None and M.subsample_index(50, 0, 42, "s1") is None
+
+
+# --- pre-gating -----------------------------------------------------------------
+
+def cytof_panel() -> P.Panel:
+    pnn = [c for c, _ in make_fixture.CYTOF_PANEL]
+    pns = [m for _, m in make_fixture.CYTOF_PANEL]
+    panel = P.build([P.Header("a", pnn, pns, {})])
+    P.configure(panel, 5.0, {}, {})
+    return panel
+
+
+def test_find_channels_and_plan():
+    gc = G.find_channels(cytof_panel().channels)
+    assert gc.dna == ["Ir191Di", "Ir193Di"] and gc.beads == ["Ce140Di"] and gc.viability == ["In115Di"]
+    assert G.plan("auto", "mass", gc)[0] is True
+    assert G.plan("auto", "spectral", gc)[0] is False
+    assert G.plan("false", "mass", gc)[0] is False
+    assert G.plan("true", "spectral", gc)[0] is True
+    assert G.plan("true", "mass", G.GateChannels())[0] is False
+    # spectral demo-like panel: no gating channel (CD45 is not one)
+    spectral = P.build([P.Header("a", ["FSC-A", "BUV395-A", "Spark Blue 550-A"], ["", "CD4", "CD45"], {})])
+    P.configure(spectral, 6000, {}, {})
+    assert not G.find_channels(spectral.channels).any()
+    # an unlabelled 140Ce is a bead channel; a labelled 151Eu antibody is not
+    p = P.build([P.Header("a", ["Ce140Di", "Eu151Di", "Eu153Di"], ["", "151Eu_CD107a", "153Eu_Beads"], {})])
+    P.configure(p, 5.0, {}, {})
+    assert G.find_channels(p.channels).beads == ["Ce140Di", "Eu153Di"]
+
+
+def gate_synthetic(n=40000, seed=3, **kw):
+    ev = make_fixture.cytof_events(n, np.random.default_rng(seed), **kw)
+    pnn = [c for c, _ in make_fixture.CYTOF_PANEL]
+    gc = G.GateChannels(dna=["Ir191Di", "Ir193Di"], beads=["Ce140Di"], viability=["In115Di"])
+    cols = {c: ev[:, pnn.index(c)].astype(float) for c in gc.dna + gc.beads + gc.viability}
+    return G.gate(cols, gc, {c: 5.0 for c in cols}), gc, cols
+
+
+def test_gates_on_synthetic_cytof():
+    res, gc, _ = gate_synthetic()
+    n = res.events_in
+    f = make_fixture.CYTOF_FRACTIONS
+    assert abs(res.beads_removed / n - f["beads"]) < 0.005
+    assert res.beads_free == res.beads_removed  # the synthetic beads have no DNA
+    assert abs(res.dna_removed / n - f["debris"]) < 0.01
+    assert abs(res.dead_removed / n - f["dead"]) < 0.01
+    assert res.events_out == n - res.beads_removed - res.dna_removed - res.dead_removed
+    th = res.thresholds
+    assert 2.0 <= th["bead"] <= 6.7
+    assert abs(th["dna_mode"] - 4.5) < 0.05
+    assert th["dna_low"] <= th["dna_mode"] - G.DNA_LOW_MIN + 1e-6
+    assert th["dna_high"] >= th["dna_mode"] + G.DNA_HIGH_MIN - 1e-6  # generous on the high side (doublets)
+    assert 3.6 < th["dead"] < 5.0 and "valley" in th["dead_method"]
+    assert not res.warnings
+    # deterministic
+    again, *_ = gate_synthetic()
+    assert np.array_equal(res.keep, again.keep) and again.thresholds == th
+
+
+def test_viability_unimodal_removes_little():
+    rng = np.random.default_rng(5)
+    v = np.where(rng.random(20000) < 0.5, 0, rng.normal(2.8, 0.5, 20000)).clip(0)
+    thr, info = G.viability_threshold(v)
+    assert (v > thr).mean() < 0.02 and info["dead_method"].startswith("upper fence")
+    # a channel that is high for most events never loses more than MAX_DEAD_FRACTION
+    v = np.concatenate([rng.normal(1.0, 0.2, 4000), rng.normal(5.0, 0.3, 16000)])
+    thr, info = G.viability_threshold(v)
+    assert (v > thr).mean() <= G.MAX_DEAD_FRACTION + 1e-9
+
+
+def test_gate_warns_when_it_removes_most_events():
+    n = 20000
+    rng = np.random.default_rng(1)
+    s = np.where(rng.random(n) < 0.3, rng.normal(4.5, 0.15, n), rng.uniform(0.3, 3.0, n))
+    cols = {"Ir191Di": 5 * np.sinh(s), "Ir193Di": 5 * np.sinh(s + 0.3)}
+    res = G.gate(cols, G.GateChannels(dna=["Ir191Di", "Ir193Di"]), {})
+    assert res.dna_removed / n > 0.6
+    assert len(res.warnings) == 1 and "DNA gate removed" in res.warnings[0]
+    assert res.events_out > 0.25 * n  # applied anyway
+
+
+def test_bead_gate_without_beads():
+    rng = np.random.default_rng(2)
+    thr, why = G.bead_threshold(np.arcsinh(rng.uniform(0, 3, 10000) / 5))
+    assert thr is None and "no bead population" in why
+
+
+def test_offset_off_by_one_is_retried(tmp_path):
+    out = make_fixture.make_cytof(tmp_path, n_events=500)
+    import flowio
+    from flowio.exceptions import FCSParsingError
+
+    with pytest.raises(FCSParsingError):
+        flowio.FlowData(str(out / "pt01_pre_tx.fcs"))
+    events, pnn, off = fcsio.read_events(out / "pt01_pre_tx.fcs", None)
+    assert off is True and events.shape[0] == 500 and pnn[0] == "Time"
+    # a file that is fine is read without the option
+    make_fixture.write_fcs(tmp_path / "ok.fcs", np.ones((10, 2), np.float32), ["A", "B"], ["", ""], {})
+    assert fcsio.read_events(tmp_path / "ok.fcs", None)[2] is False
+    # any other offset problem still fails
+    raw = bytearray((out / "pt01_month_6.fcs").read_bytes())
+    end = int(raw[34:42].decode())
+    raw[34:42] = str(end + 2).rjust(8).encode()
+    (tmp_path / "bad.fcs").write_bytes(bytes(raw))
+    with pytest.raises(Exception):
+        fcsio.read_events(tmp_path / "bad.fcs", None)
+
+
+def test_end_to_end_cytof(tmp_path, monkeypatch):
+    fixture = make_fixture.make_cytof(tmp_path / "fx", n_events=6000)
+    out = tmp_path / "out"
+    assert run(monkeypatch, fixture, out, MAX_EVENTS_PER_SAMPLE="4000") == 0
+    meta = out / "metadata"
+    rows = {r["channel"]: r for r in read_csv(meta / "panel.csv")}
+    assert (rows["In115Di"]["clustering"], rows["In115Di"]["state"]) == ("false", "false")
+    assert rows["Er168Di"]["state"] == "true" and rows["Yb172Di"]["state"] == "true"
+    assert rows["Lu175Di"]["state"] == "true" and rows["Nd145Di"]["clustering"] == "true"
+    for ch in ("Event_length", "Center", "Offset", "Width", "Residual"):
+        assert rows[ch]["type"] == "other" and rows[ch]["cofactor"] == ""
+    prep = json.loads((meta / "prep.json").read_text())
+    assert prep["cytometerType"] == "mass"
+    assert prep["pregate"]["applied"] is True and prep["pregate"]["mode"] == "auto"
+    assert prep["pregate"]["channels"] == {"dna": ["Ir191Di", "Ir193Di"], "beads": ["Ce140Di"],
+                                           "viability": ["In115Di"]}
+    gating = {r["sample_id"]: r for r in read_csv(meta / "gating.csv")}
+    assert set(gating) == {"pt01_pre_tx", "pt01_month_6"}
+    for sid, g in gating.items():
+        s = prep["samples"][sid]
+        assert s["ignore_offset_error"] is True
+        pg = s["pregate"]
+        assert int(g["events_in"]) == s["events_in"] and int(g["events_out"]) == pg["events_out"]
+        assert int(g["events_in"]) - int(g["beads_removed"]) - int(g["dna_removed"]) - int(g["dead_removed"]) \
+            == int(g["events_out"])
+        assert 0.10 < 1 - int(g["events_out"]) / int(g["events_in"]) < 0.22
+        assert "bead=" in g["thresholds"] and "dead=" in g["thresholds"]
+        assert (meta / pg["plot"]).is_file() and (meta / pg["plot"]).stat().st_size < 200_000
+        # subsample drawn from the gated events
+        assert s["events_out"] == min(4000, pg["events_out"])
+    fd, pnn, _, ev = read_fcs(out / "fcs" / "pt01_pre_tx.fcs")
+    assert "pregate=beads/dna/live" in fd.text["pennsieve_prep"]
+    assert np.all(np.diff(ev[:, pnn.index("Time")]) >= 0)
+    # the gated events are gone: no bead events left
+    assert ev[:, pnn.index("Ce140Di")].max() < prep["samples"]["pt01_pre_tx"]["pregate"]["thresholds"]["bead"]
+
+    out2 = tmp_path / "out2"
+    assert run(monkeypatch, fixture, out2, PREGATE="false") == 0
+    assert not (out2 / "metadata" / "gating.csv").exists() and not (out2 / "metadata" / "gates").exists()
+    prep2 = json.loads((out2 / "metadata" / "prep.json").read_text())
+    assert prep2["pregate"]["applied"] is False
+    assert prep2["samples"]["pt01_pre_tx"]["events_out"] == prep2["samples"]["pt01_pre_tx"]["events_in"]
+    assert run(monkeypatch, fixture, tmp_path / "out3", PREGATE="sometimes") == 2
 
 
 # --- end to end -----------------------------------------------------------------
@@ -237,6 +390,8 @@ def test_end_to_end(fixture_dir, tmp_path, monkeypatch):
     assert {d["channel"] for d in s["channels_dropped"]} == {"BV785-A", "PerCP-A"}
     assert prep["samples"]["batch2_s1"]["markers_renamed"][0]["from"] == "HLA-DR"
     assert prep["cytometerType"] == "spectral"
+    assert prep["pregate"]["applied"] is False and not (meta / "gating.csv").exists()
+    assert "pregate" not in s and s["ignore_offset_error"] is False
     assert {k["file"] for k in prep["skipped"]} == {"empty.fcs", "broken.fcs"} or \
         {Path(k["file"]).name for k in prep["skipped"]} == {"empty.fcs", "broken.fcs"}
     for d in (meta, fcs):

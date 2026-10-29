@@ -5,9 +5,10 @@ application:
   description: >-
     The first step of the immune cytometry workflows. Reads FCS files (conventional, spectral or
     mass cytometry) and an optional sample sheet, works out the panel common to every sample,
-    compensates when the data need it, arcsinh-transforms the marker channels (FlowKit/FlowIO,
-    White et al. 2021) and writes one FCS 3.1 float32 file per sample with samples.csv,
-    panel.csv (clustering and state markers) and prep.json for the steps that follow.
+    compensates when the data need it, pre-gates raw mass cytometry (beads out, DNA+ cells, live
+    cells), arcsinh-transforms the marker channels (FlowKit/FlowIO, White et al. 2021) and writes
+    one FCS 3.1 float32 file per sample with samples.csv, panel.csv (clustering and state
+    markers) and prep.json for the steps that follow.
   type: processor
   tags:
     - cytometry
@@ -41,6 +42,19 @@ parameters:
     description: >-
       auto applies the file's $SPILLOVER when it is not the identity and the cytometer is not
       spectral (unmixed) or mass; true applies any non-identity $SPILLOVER; false never compensates.
+    defaultValue: auto
+    validValues: [auto, "true", "false"]
+  - name: PREGATE
+    type: string
+    label: Pre-gating (mass cytometry)
+    description: >-
+      Removes beads, DNA- debris and aggregates, and dead cells from raw mass cytometry (CyTOF)
+      before anything else, with thresholds found in each file's data (arcsinh, cofactor 5); writes
+      metadata/gating.csv and a gate plot per sample under metadata/gates/. auto gates only mass
+      cytometry whose panel has a DNA (Ir191/Ir193), bead (140Ce) or viability (115In_Dead,
+      cisplatin, Rh103) channel, so spectral and conventional flow data are untouched; true gates
+      whenever such channels exist; false never (use it for files already gated in
+      Cytobank/FlowJo). Doublets are left to cleanet.
     defaultValue: auto
     validValues: [auto, "true", "false"]
   - name: COFACTOR
@@ -97,7 +111,9 @@ outputs:
     description: >-
       samples.csv (sample_id, file, batch, condition, n_events, sample sheet columns), panel.csv
       (channel, marker, type, cofactor, clustering, state), prep.json (per sample: cytometer,
-      date, events, channels dropped, compensation, cofactors) and provenance.json.
+      date, events, channels dropped, compensation, cofactors, pre-gating) and provenance.json;
+      when pre-gated, gating.csv (events per gate, thresholds) and gates/<sample_id>.png.
     mediaTypes:
       - text/csv
       - application/json
+      - image/png

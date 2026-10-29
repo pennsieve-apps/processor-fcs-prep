@@ -3,9 +3,9 @@ message: If you use this app, please cite it and the works it builds on, listed 
 type: software
 title: FCS Prep
 abstract: The first step of the immune cytometry workflows. Reads FCS files (conventional, spectral or
-  mass cytometry), works out the common panel, compensates when needed and arcsinh-transforms the marker
-  channels with FlowKit, writing one FCS 3.1 file per sample plus the sample sheet and panel for the steps
-  that follow.
+  mass cytometry), works out the common panel, compensates when needed, pre-gates raw mass cytometry
+  (beads, DNA, viability) and arcsinh-transforms the marker channels with FlowKit, writing one FCS 3.1
+  file per sample plus the sample sheet and panel for the steps that follow.
 authors:
 - name: Pennsieve (University of Pennsylvania)
 repository-code: https://github.com/pennsieve-apps/processor-fcs-prep
@@ -47,6 +47,60 @@ references:
   volume: 12
   start: '768541'
   doi: 10.3389/fimmu.2021.768541
+- type: article
+  title: Automated Data Cleanup for Mass Cytometry
+  authors:
+  - family-names: Bagwell
+    given-names: Charles Bruce
+  - family-names: Inokuma
+    given-names: Margaret
+  - family-names: Hunsberger
+    given-names: Benjamin
+  - family-names: Herbert
+    given-names: Donald
+  - family-names: Bray
+    given-names: Christopher
+  - family-names: Hill
+    given-names: Beth
+  - family-names: Stelzer
+    given-names: Gregory
+  - family-names: Li
+    given-names: Stephen
+  - family-names: Kollipara
+    given-names: Avinash
+  - family-names: Ornatsky
+    given-names: Olga
+  - family-names: Baranov
+    given-names: Vladimir
+  year: 2020
+  journal: Cytometry Part A
+  volume: 97
+  issue: '2'
+  start: '184'
+  end: '198'
+  doi: 10.1002/cyto.a.23926
+- type: article
+  title: Characterization of immune phenotypes in peripheral blood of adult renal transplant recipients using
+    mass cytometry (CyTOF)
+  authors:
+  - family-names: Kowli
+    given-names: Sangeeta
+  - family-names: Minocherhomji
+    given-names: Sheroy
+  - family-names: Martinez
+    given-names: Olivia M
+  - family-names: Busque
+    given-names: Stephan
+  - family-names: Lebrec
+    given-names: Herve
+  - family-names: Maecker
+    given-names: Holden T
+  year: 2025
+  journal: ImmunoHorizons
+  volume: 9
+  issue: '4'
+  start: vlae013
+  doi: 10.1093/immhor/vlae013
 - type: article
   title: cyCombine allows for robust integration of single-cell cytometry datasets within and across technologies
   authors:
@@ -299,4 +353,15 @@ references:
   publisher:
     name: Zenodo
   doi: 10.5281/zenodo.15388817
+  license: CC-BY-4.0
+- type: data
+  title: Characterization of immune phenotypes in peripheral blood of adult renal transplant recipients using
+    mass cytometry (CyTOF)
+  authors:
+  - family-names: Kowli
+    given-names: Sangeeta
+  year: 2025
+  publisher:
+    name: Zenodo
+  doi: 10.5281/zenodo.17238592
   license: CC-BY-4.0
