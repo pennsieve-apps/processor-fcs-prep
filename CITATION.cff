@@ -1,5 +1,6 @@
 cff-version: "1.2.0"
-message: If you use this app, please cite it and the works it builds on, listed under references.
+message: >-
+  If you use this app, please cite the work it implements (preferred-citation), this release, and Pennsieve (RRID:SCR_021677); the other works it builds on are listed under references.
 type: software
 title: FCS Prep
 abstract: The first step of the immune cytometry workflows. Reads FCS files (conventional, spectral or
@@ -18,6 +19,36 @@ keywords:
 - fcs
 - preprocessing
 - immunology
+# The work this app implements; the release report's "How to cite" puts it first.
+preferred-citation:
+  type: article
+  title: 'FlowKit: A Python Toolkit for Integrated Manual and Automated Cytometry Analysis Workflows'
+  authors:
+  - family-names: White
+    given-names: Scott
+  - family-names: Quinn
+    given-names: John
+  - family-names: Enzor
+    given-names: Jennifer
+  - family-names: Staats
+    given-names: Janet
+  - family-names: Mosier
+    given-names: Sarah M.
+  - family-names: Almarode
+    given-names: James
+  - family-names: Denny
+    given-names: Thomas N.
+  - family-names: Weinhold
+    given-names: Kent J.
+  - family-names: Ferrari
+    given-names: Guido
+  - family-names: Chan
+    given-names: Cliburn
+  year: 2021
+  journal: Frontiers in Immunology
+  volume: 12
+  start: '768541'
+  doi: 10.3389/fimmu.2021.768541
 references:
 - type: article
   title: 'FlowKit: A Python Toolkit for Integrated Manual and Automated Cytometry Analysis Workflows'
